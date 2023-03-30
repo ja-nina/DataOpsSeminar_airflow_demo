@@ -1,5 +1,5 @@
 try:
-
+    from transformers import T5Tokenizer, T5ForConditionalGeneration
     from datetime import timedelta
     from airflow import DAG
     from airflow.operators.python_operator import PythonOperator
@@ -13,36 +13,46 @@ except Exception as e:
 
 def first_function_execute(**context):
     print("first_function_execute   ")
-    context['ti'].xcom_push(key='mykey', value="first_function_execute says Hello ")
+    context['ti'].xcom_push(key='mykey', value="first says Hello, it's nice to have you here! I love data :) ")
 
 
 def second_function_execute(**context):
     instance = context.get("ti").xcom_pull(key="mykey")
-    data = [{"name":"Soumil","title":"Full Stack Software Engineer"}, { "name":"Nitin","title":"Full Stack Software Engineer"},]
+    data = [{"name":"Nina","title":"DataOpsussy person"}, { "name":"Oska","title":"ANOTHER DataOpsussy person"}, { "name":"Oska","title":"Also DataOpsussy person"},]
     df = pd.DataFrame(data=data)
     print('@'*66)
+    print("The data specified:")
     print(df.head())
     print('@'*66)
-
     print("I am in second_function_execute got value :{} from Function 1  ".format(instance))
 
 
+def transformer_function_execute(**context):
+    print("transformer_function_execute   ")
+    first_function_sentence = context.get("ti").xcom_pull(key="mykey")
+    tokenizer = T5Tokenizer.from_pretrained("t5-small")
+    model = T5ForConditionalGeneration.from_pretrained("t5-small")
+    input_ids = tokenizer("translate English to German: {}".format(first_function_sentence), return_tensors="pt").input_ids
+    outputs = model.generate(input_ids)
+    print(" transformed sentence: ", tokenizer.decode(outputs[0], skip_special_tokens=True))
+
+
 with DAG(
-        dag_id="first_dag",
-        schedule_interval="@daily",
+        dag_id="first_dag", #best practise is for it to be like like the file
+        schedule_interval="@daily", # can be chron
         default_args={
             "owner": "airflow",
-            "retries": 1,
+            "retries": 1, #if fails
             "retry_delay": timedelta(minutes=5),
-            "start_date": datetime(2021, 1, 1),
+            "start_date": datetime(2023, 3, 29), # catchup is re-doing old
         },
         catchup=False) as f:
 
     first_function_execute = PythonOperator(
         task_id="first_function_execute",
         python_callable=first_function_execute,
-        provide_context=True,
-        op_kwargs={"name":"Soumil Shah"}
+        provide_context=True, # crucial for data exchange
+        op_kwargs={"name":"DataOpsussy"}
     )
 
     second_function_execute = PythonOperator(
@@ -51,6 +61,12 @@ with DAG(
         provide_context=True,
     )
 
-first_function_execute >> second_function_execute
+    transformer_function_execute = PythonOperator(
+        task_id="transformer_function_execute",
+        python_callable=transformer_function_execute,
+        provide_context=True,
+    )
+
+first_function_execute >> second_function_execute >> transformer_function_execute
 
 
